@@ -13,14 +13,14 @@ bool Client::Connect(HWNS::IPEndpoint endpoint)
 		m_Socket = HWNS::Socket(endpoint.GetIPVersion());
 		if (m_Socket.Create() == HWNS::PResult::P_Success)
 		{
-			std::cout << "Successfully created socket." << std::endl;
-
 			// TMP
 			if (m_Socket.SetBlocking(true) != HWNS::PResult::P_Success)
 				return false;
 
+			std::cout << "Successfully created socket." << std::endl;
 			if (m_Socket.Connect(endpoint) == HWNS::PResult::P_Success)
 			{
+				m_IsConnected = true;
 				std::cout << "Successfully connected to server." << std::endl;
 				return true;
 			}

@@ -9,4 +9,6 @@ public:
 
 private:
 	HWNS::Socket m_ListeningSocket;
+	std::vector<HWNS::TCPConnection> m_Connections;
+	std::vector<WSAPOLLFD> m_MasterFD;
 };
