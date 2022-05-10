@@ -9,7 +9,7 @@ public:
 
 private:
 	void CloseConnection(int connectionIndex, std::string reason);
-	bool ProcessPacket(HWNS::Packet& packet);
+	bool ProcessPacket(std::shared_ptr<HWNS::Packet> packet);
 
 private:
 	HWNS::Socket m_ListeningSocket;

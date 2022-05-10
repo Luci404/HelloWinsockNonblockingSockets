@@ -1,14 +1,9 @@
 #pragma once
 #include "HWNS/Socket.h"
+#include "HWNS/PacketManager.h"
 
 namespace HWNS
 {
-	enum PacketTask
-	{
-		ProcessPacketSize,
-		ProcessPacketContent
-	};
-
 	class TCPConnection
 	{
 	public:
@@ -17,9 +12,8 @@ namespace HWNS
 		std::string ToString();
 		
 	public:
-		PacketTask Task = PacketTask::ProcessPacketSize;
-		int ExtractionOffset = 0;
-		uint16_t PacketSize = 0;
+		PacketManager IncomingPacketManager;
+		PacketManager OutgoingPacketManager;
 		char Buffer[g_MaxPacketSize];
 
 	private:

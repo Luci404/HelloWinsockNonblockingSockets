@@ -104,14 +104,14 @@ void Server::Frame()
 				// TMP
 				int bytesReceived = 0;
 				
-				if (connection.Task == HWNS::PacketTask::ProcessPacketSize)
+				if (connection.IncomingPacketManager.CurrentTask == HWNS::PacketManagerTask::ProcessPacketSize)
 				{
 					// ExtractionOffset handles edge case with partial reads.
-					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.PacketSize + connection.ExtractionOffset, sizeof(uint16_t) - connection.ExtractionOffset, 0);
+					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.IncomingPacketManager.CurrentPacketSize + connection.IncomingPacketManager.CurrentPacketExtractionOffset, sizeof(uint16_t) - connection.IncomingPacketManager.CurrentPacketExtractionOffset, 0);
 				}
 				else // HWNS::PacketTask::ProcessPacketContent
 				{
-					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.Buffer + connection.ExtractionOffset, connection.PacketSize - connection.ExtractionOffset, 0);
+					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.Buffer + connection.IncomingPacketManager.CurrentPacketExtractionOffset, connection.IncomingPacketManager.CurrentPacketSize - connection.IncomingPacketManager.CurrentPacketExtractionOffset, 0);
 				}
 				
 				if (bytesReceived == 0) // Connection lost
@@ -132,47 +132,57 @@ void Server::Frame()
 
 				if (bytesReceived > 0)
 				{
-					connection.ExtractionOffset += bytesReceived;
+					connection.IncomingPacketManager.CurrentPacketExtractionOffset += bytesReceived;
 
-					if (connection.Task == HWNS::PacketTask::ProcessPacketSize)
+					if (connection.IncomingPacketManager.CurrentTask== HWNS::PacketManagerTask::ProcessPacketSize)
 					{
-						if (connection.ExtractionOffset == sizeof(uint16_t))
+						if (connection.IncomingPacketManager.CurrentPacketExtractionOffset == sizeof(uint16_t))
 						{
 							// Fully received the packet size.
-							connection.PacketSize = ntohs(connection.PacketSize);
-							if (connection.PacketSize > HWNS::g_MaxPacketSize)
+							connection.IncomingPacketManager.CurrentPacketSize = ntohs(connection.IncomingPacketManager.CurrentPacketSize);
+							if (connection.IncomingPacketManager.CurrentPacketSize > HWNS::g_MaxPacketSize)
 							{
 								CloseConnection(connectionIndex, "Packet size too large.");
 								continue;
 							}
 
 							// We are now ready to start processing the packet content.
-							connection.Task = HWNS::PacketTask::ProcessPacketContent;
-							connection.ExtractionOffset = 0;
+							connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketContent;
+							connection.IncomingPacketManager.CurrentPacketExtractionOffset = 0;
 						}
 					}
 					else // HWNS::PacketTask::ProcessPacketContent
 					{
-						if (connection.ExtractionOffset == connection.PacketSize) // Check if we have the full packet
+						if (connection.IncomingPacketManager.CurrentPacketExtractionOffset == connection.IncomingPacketManager.CurrentPacketSize) // Check if we have the full packet
 						{
-							HWNS::Packet packet;
-							packet.Buffer.resize(connection.PacketSize);
-							memcpy(&packet.Buffer[0], &connection.Buffer[0], connection.PacketSize);
+							std::shared_ptr<HWNS::Packet> packet = std::make_shared<HWNS::Packet>();
+							packet->Buffer.resize(connection.IncomingPacketManager.CurrentPacketSize);
+							memcpy(&packet->Buffer[0], &connection.Buffer[0], connection.IncomingPacketManager.CurrentPacketSize);
 							
-							if (!ProcessPacket(packet))
-							{
-								CloseConnection(connectionIndex, "Failed to process packet");
-								continue;
-							}
+							connection.IncomingPacketManager.Append(packet);
 
 							// Reset
-							connection.PacketSize = 0;
-							connection.Task = HWNS::PacketTask::ProcessPacketSize;
-							connection.ExtractionOffset = 0;
+							connection.IncomingPacketManager.CurrentPacketSize = 0;
+							connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketSize;
+							connection.IncomingPacketManager.CurrentPacketExtractionOffset = 0;
 						}
 					}
 				}
 			}
+		}
+	}
+
+	for (int i = m_Connections.size() - 1; i >= 0; i--)
+	{
+		while (m_Connections[i].IncomingPacketManager.HasPendingPackets())
+		{
+			std::shared_ptr<HWNS::Packet> frontPacket = m_Connections[i].IncomingPacketManager.Retrieve();
+			if (!ProcessPacket(frontPacket))
+			{
+				CloseConnection(i, "Failed to process incoming packet.");
+				break;
+			}
+			m_Connections[i].IncomingPacketManager.Pop();
 		}
 	}
 }
@@ -187,33 +197,33 @@ void Server::CloseConnection(int connectionIndex, std::string reason)
 	m_Connections.erase(m_Connections.begin() + connectionIndex);
 }
 
-bool Server::ProcessPacket(HWNS::Packet& packet)
+bool Server::ProcessPacket(std::shared_ptr<HWNS::Packet> packet)
 {
-	switch (packet.GetPacketType())
+	switch (packet->GetPacketType())
 	{
 	case HWNS::PacketType::PT_ChatMessage:
 	{
 		std::string message;
-		packet >> message;
+		*packet >> message;
 		std::cout << "Chat Message: " << message << std::endl;
 		break;
 	}
 	case HWNS::PacketType::PT_IntegerArray:
 	{
 		uint32_t arraySize = 0;
-		packet >> arraySize;
+		*packet >> arraySize;
 		std::cout << "Array Size: " << arraySize << std::endl;
 		for (uint32_t i = 0; i < arraySize; i++)
 		{
 			uint32_t element = 0;
-			packet >> element;
+			*packet >> element;
 			std::cout << "Element[" << i << "] - " << element << std::endl;
 		}
 		break;
 	}
 	default:
 	{
-		std::cout << "Unrecognized packet type: " << packet.GetPacketType() << std::endl;
+		std::cout << "Unrecognized packet type: " << packet->GetPacketType() << std::endl;
 		break;
 	}
 	}
