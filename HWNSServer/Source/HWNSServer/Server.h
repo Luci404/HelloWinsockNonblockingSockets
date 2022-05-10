@@ -9,6 +9,7 @@ public:
 
 private:
 	void CloseConnection(int connectionIndex, std::string reason);
+	bool ProcessPacket(HWNS::Packet& packet);
 
 private:
 	HWNS::Socket m_ListeningSocket;

@@ -102,10 +102,18 @@ void Server::Frame()
 			if (m_UseFD[i].revents & POLLRDNORM) // If normal data can be read without blocking
 			{
 				// TMP
-				char buffer[HWNS::g_MaxPacketSize];
 				int bytesReceived = 0;
-				bytesReceived = recv(m_UseFD[i].fd, buffer, HWNS::g_MaxPacketSize, 0);
-
+				
+				if (connection.Task == HWNS::PacketTask::ProcessPacketSize)
+				{
+					// ExtractionOffset handles edge case with partial reads.
+					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.PacketSize + connection.ExtractionOffset, sizeof(uint16_t) - connection.ExtractionOffset, 0);
+				}
+				else // HWNS::PacketTask::ProcessPacketContent
+				{
+					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.Buffer + connection.ExtractionOffset, connection.PacketSize - connection.ExtractionOffset, 0);
+				}
+				
 				if (bytesReceived == 0) // Connection lost
 				{
 					CloseConnection(connectionIndex, "Recv=0");
@@ -124,7 +132,45 @@ void Server::Frame()
 
 				if (bytesReceived > 0)
 				{
-					std::cout << connection.ToString() << " - Message Size: " << bytesReceived << std::endl;
+					connection.ExtractionOffset += bytesReceived;
+
+					if (connection.Task == HWNS::PacketTask::ProcessPacketSize)
+					{
+						if (connection.ExtractionOffset == sizeof(uint16_t))
+						{
+							// Fully received the packet size.
+							connection.PacketSize = ntohs(connection.PacketSize);
+							if (connection.PacketSize > HWNS::g_MaxPacketSize)
+							{
+								CloseConnection(connectionIndex, "Packet size too large.");
+								continue;
+							}
+
+							// We are now ready to start processing the packet content.
+							connection.Task = HWNS::PacketTask::ProcessPacketContent;
+							connection.ExtractionOffset = 0;
+						}
+					}
+					else // HWNS::PacketTask::ProcessPacketContent
+					{
+						if (connection.ExtractionOffset == connection.PacketSize) // Check if we have the full packet
+						{
+							HWNS::Packet packet;
+							packet.Buffer.resize(connection.PacketSize);
+							memcpy(&packet.Buffer[0], &connection.Buffer[0], connection.PacketSize);
+							
+							if (!ProcessPacket(packet))
+							{
+								CloseConnection(connectionIndex, "Failed to process packet");
+								continue;
+							}
+
+							// Reset
+							connection.PacketSize = 0;
+							connection.Task = HWNS::PacketTask::ProcessPacketSize;
+							connection.ExtractionOffset = 0;
+						}
+					}
 				}
 			}
 		}
@@ -135,8 +181,42 @@ void Server::CloseConnection(int connectionIndex, std::string reason)
 {
 	HWNS::TCPConnection& connection = m_Connections[connectionIndex];
 	std::cout << "[" << reason << "] Connection lost : " << connection.ToString() << "." << std::endl;
-	m_MasterFD.erase(m_MasterFD.begin() + (connectionIndex+1));
+	m_MasterFD.erase(m_MasterFD.begin() + (connectionIndex + 1));
 	m_UseFD.erase(m_UseFD.begin() + (connectionIndex + 1));
 	connection.Close();
 	m_Connections.erase(m_Connections.begin() + connectionIndex);
+}
+
+bool Server::ProcessPacket(HWNS::Packet& packet)
+{
+	switch (packet.GetPacketType())
+	{
+	case HWNS::PacketType::PT_ChatMessage:
+	{
+		std::string message;
+		packet >> message;
+		std::cout << "Chat Message: " << message << std::endl;
+		break;
+	}
+	case HWNS::PacketType::PT_IntegerArray:
+	{
+		uint32_t arraySize = 0;
+		packet >> arraySize;
+		std::cout << "Array Size: " << arraySize << std::endl;
+		for (uint32_t i = 0; i < arraySize; i++)
+		{
+			uint32_t element = 0;
+			packet >> element;
+			std::cout << "Element[" << i << "] - " << element << std::endl;
+		}
+		break;
+	}
+	default:
+	{
+		std::cout << "Unrecognized packet type: " << packet.GetPacketType() << std::endl;
+		break;
+	}
+	}
+
+	return true;
 }
