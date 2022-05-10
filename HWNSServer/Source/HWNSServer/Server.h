@@ -8,7 +8,12 @@ public:
 	void Frame();
 
 private:
+	void CloseConnection(int connectionIndex, std::string reason);
+
+private:
 	HWNS::Socket m_ListeningSocket;
 	std::vector<HWNS::TCPConnection> m_Connections;
 	std::vector<WSAPOLLFD> m_MasterFD;
+	std::vector<WSAPOLLFD> m_UseFD;
+
 };

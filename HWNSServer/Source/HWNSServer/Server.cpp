@@ -45,13 +45,13 @@ bool Server::Initialize(HWNS::IPEndpoint endpoint)
 
 void Server::Frame()
 {
-	std::vector<WSAPOLLFD> useFD = m_MasterFD;
+	m_UseFD = m_MasterFD;
 
 	// TODO: Consider using 0 for timeout
-	if (WSAPoll(useFD.data(), useFD.size(), 1) > 0)
+	if (WSAPoll(m_UseFD.data(), m_UseFD.size(), 1) > 0)
 	{
 #pragma region listener
-		WSAPOLLFD& listeningSocketFD = useFD[0];
+		WSAPOLLFD& listeningSocketFD = m_UseFD[0];
 		if (listeningSocketFD.revents & POLLRDNORM)
 		{
 			// Try to accept connection
@@ -76,59 +76,39 @@ void Server::Frame()
 		}
 #pragma endregion Code specific to the listening socket
 
-		for (int i = 1; i < useFD.size(); i++)
+		for (int i = m_UseFD.size() - 1; i >= 1; i--)
 		{
 			int connectionIndex = i - 1;
 			HWNS::TCPConnection& connection = m_Connections[connectionIndex];
 
-			if (useFD[i].revents & POLLERR) // If error occured on this socket
+			if (m_UseFD[i].revents & POLLERR) // If poll error occured on this socket
 			{
-				std::cout << "Poll error occured on: " << connection.ToString() << "." << std::endl;
-				m_MasterFD.erase(m_MasterFD.begin() + i);
-				useFD.erase(useFD.begin() + i);
-				connection.Close();
-				m_Connections.erase(m_Connections.begin() + connectionIndex);
-				i -= 1;
+				CloseConnection(connectionIndex, "POLLERR");
 				continue;
 			}
 
-			if (useFD[i].revents & POLLHUP) // If poll hangup occured on this socket
+			if (m_UseFD[i].revents & POLLHUP) // If poll hangup occured on this socket
 			{
-				std::cout << "Poll hangup occured on: " << connection.ToString() << "." << std::endl;
-				m_MasterFD.erase(m_MasterFD.begin() + i);
-				useFD.erase(useFD.begin() + i);
-				connection.Close();
-				m_Connections.erase(m_Connections.begin() + connectionIndex);
-				i -= 1;
+				CloseConnection(connectionIndex, "POLLHUP");
 				continue;
 			}
 
-			if (useFD[i].revents & POLLNVAL) // If invalid socket
+			if (m_UseFD[i].revents & POLLNVAL) // If invalid socket
 			{
-				std::cout << "Invalid socket used on: " << connection.ToString() << "." << std::endl;
-				m_MasterFD.erase(m_MasterFD.begin() + i);
-				useFD.erase(useFD.begin() + i);
-				connection.Close();
-				m_Connections.erase(m_Connections.begin() + connectionIndex);
-				i -= 1;
+				CloseConnection(connectionIndex, "POLLNVAL");
 				continue;
 			}
 
-			if (useFD[i].revents & POLLRDNORM) // If normal data can be read without blocking
+			if (m_UseFD[i].revents & POLLRDNORM) // If normal data can be read without blocking
 			{
 				// TMP
 				char buffer[HWNS::g_MaxPacketSize];
 				int bytesReceived = 0;
-				bytesReceived = recv(useFD[i].fd, buffer, HWNS::g_MaxPacketSize, 0);
+				bytesReceived = recv(m_UseFD[i].fd, buffer, HWNS::g_MaxPacketSize, 0);
 
 				if (bytesReceived == 0) // Connection lost
 				{
-					std::cout << "Connection lost: " << connection.ToString() << "." << std::endl;
-					m_MasterFD.erase(m_MasterFD.begin() + i);
-					useFD.erase(useFD.begin() + i);
-					connection.Close();
-					m_Connections.erase(m_Connections.begin() + connectionIndex);
-					i -= 1;
+					CloseConnection(connectionIndex, "Recv=0");
 					continue;
 				}
 
@@ -137,12 +117,7 @@ void Server::Frame()
 					int error = WSAGetLastError();
 					if (error != WSAEWOULDBLOCK)
 					{
-						std::cout << "[Recv<0] Connection lost: " << connection.ToString() << "." << std::endl;
-						m_MasterFD.erase(m_MasterFD.begin() + i);
-						useFD.erase(useFD.begin() + i);
-						connection.Close();
-						m_Connections.erase(m_Connections.begin() + connectionIndex);
-						i -= 1;
+						CloseConnection(connectionIndex, "Recv<0");
 						continue;
 					}
 				}
@@ -154,4 +129,14 @@ void Server::Frame()
 			}
 		}
 	}
+}
+
+void Server::CloseConnection(int connectionIndex, std::string reason)
+{
+	HWNS::TCPConnection& connection = m_Connections[connectionIndex];
+	std::cout << "[" << reason << "] Connection lost : " << connection.ToString() << "." << std::endl;
+	m_MasterFD.erase(m_MasterFD.begin() + (connectionIndex+1));
+	m_UseFD.erase(m_UseFD.begin() + (connectionIndex + 1));
+	connection.Close();
+	m_Connections.erase(m_Connections.begin() + connectionIndex);
 }
