@@ -13,9 +13,10 @@ bool Client::Connect(HWNS::IPEndpoint endpoint)
 		m_Socket = HWNS::Socket(endpoint.GetIPVersion());
 		if (m_Socket.Create() == HWNS::PResult::P_Success)
 		{
-			// TMP
 			if (m_Socket.SetBlocking(true) != HWNS::PResult::P_Success)
+			{
 				return false;
+			}
 
 			std::cout << "Successfully created socket." << std::endl;
 			if (m_Socket.Connect(endpoint) == HWNS::PResult::P_Success)
@@ -48,7 +49,7 @@ bool Client::IsConnected()
 
 bool Client::Frame()
 {
-	HWNS::Packet stringPacket(HWNS::PacketType::PT_ChatMessage);
+	/*HWNS::Packet stringPacket(HWNS::PacketType::PT_ChatMessage);
 	stringPacket << std::string("This is my string packet!");
 
 	HWNS::Packet integerArrayPacket(HWNS::PacketType::PT_IntegerArray);
@@ -75,7 +76,53 @@ bool Client::Frame()
 	}
 
 	std::cout << "Attempting to send chunk of data..." << std::endl;
-	Sleep(500);
+	*/
+
+	HWNS::Packet incomingPacket;
+	if (m_Socket.ReceivePacket(incomingPacket) != HWNS::PResult::P_Success)
+	{
+		std::cout << "Lost connection?" << std::endl;
+		m_IsConnected = false;
+		return false;
+	}
+
+	if (!ProcessPacket(incomingPacket))
+	{
+		m_IsConnected = false;
+		return false;
+	}
+
+	return true;
+}
+
+bool Client::ProcessPacket(HWNS::Packet& packet)
+{
+	switch (packet.GetPacketType())
+	{
+	case HWNS::PacketType::PT_ChatMessage:
+	{
+		std::string chatmessage;
+		packet >> chatmessage;
+		std::cout << "Chat Message: " << chatmessage << std::endl;
+		break;
+	}
+	case HWNS::PacketType::PT_IntegerArray:
+	{
+		uint32_t arraySize = 0;
+		packet >> arraySize;
+		std::cout << "Array Size: " << arraySize << std::endl;
+		for (uint32_t i = 0; i < arraySize; i++)
+		{
+			uint32_t element = 0;
+			packet >> element;
+			std::cout << "Element[" << i << "] - " << element << std::endl;
+		}
+		break;
+	}
+	default:
+		std::cout << "Unrecognized packet type: " << packet.GetPacketType() << std::endl;
+		return false;
+	}
 
 	return true;
 }

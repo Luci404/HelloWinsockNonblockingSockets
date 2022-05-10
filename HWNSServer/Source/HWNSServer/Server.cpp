@@ -65,9 +65,14 @@ void Server::Frame()
 
 				WSAPOLLFD newConnectionFD = {};
 				newConnectionFD.fd = newConnectionSocket.GetHandle();
-				newConnectionFD.events = POLLRDNORM;
+				newConnectionFD.events = POLLRDNORM | POLLWRNORM;
 				newConnectionFD.revents = 0;
 				m_MasterFD.push_back(newConnectionFD);
+
+				// Send welcome message
+				std::shared_ptr<HWNS::Packet> welcomeMessagePacket = std::make_shared<HWNS::Packet>(HWNS::PacketType::PT_ChatMessage);
+				*welcomeMessagePacket << std::string("Welcome from server!");
+				acceptedConnection.OutgoingPacketManager.Append(welcomeMessagePacket);
 			}
 			else
 			{
@@ -165,6 +170,55 @@ void Server::Frame()
 							connection.IncomingPacketManager.CurrentPacketSize = 0;
 							connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketSize;
 							connection.IncomingPacketManager.CurrentPacketExtractionOffset = 0;
+						}
+					}
+				}
+			}
+		
+			if (m_UseFD[i].revents & POLLWRNORM)
+			{
+				HWNS::PacketManager& pm = connection.OutgoingPacketManager;
+				while (pm.HasPendingPackets())
+				{
+					if (pm.CurrentTask == HWNS::PacketManagerTask::ProcessPacketSize) // Sending packet size.
+					{
+						pm.CurrentPacketSize = pm.Retrieve()->Buffer.size();
+						uint16_t bigEndianPacketSize = htons(pm.CurrentPacketSize);
+						int bytesSent = send(m_UseFD[i].fd, (char*)(&bigEndianPacketSize) + pm.CurrentPacketExtractionOffset, sizeof(uint16_t) - pm.CurrentPacketExtractionOffset, 0);
+						if (bytesSent > 0)
+						{
+							pm.CurrentPacketExtractionOffset += bytesSent;
+						}
+
+						if (pm.CurrentPacketExtractionOffset == sizeof(uint16_t)) // If full packet size was sent.
+						{
+							pm.CurrentPacketExtractionOffset = 0;
+							pm.CurrentTask = HWNS::PacketManagerTask::ProcessPacketContent;
+						}
+						else // If full packet size was not sent, break out of loop for sending outgoing packets for this connection.
+						{
+							// We don't want to send data unless we know that we can sent without blocking.
+							break;
+						}
+					}
+					else // Sending packet content
+					{
+						char* bufferPtr = (char*)&pm.Retrieve()->Buffer[0];
+						int bytesSent = send(m_UseFD[i].fd, (char*)(&bufferPtr) + pm.CurrentPacketExtractionOffset, pm.CurrentPacketSize - pm.CurrentPacketExtractionOffset, 0);
+						if (bytesSent > 0)
+						{
+							pm.CurrentPacketExtractionOffset += bytesSent;
+						}
+
+						if (pm.CurrentPacketExtractionOffset == pm.CurrentPacketSize) // If full packet contents have been sent
+						{
+							pm.CurrentPacketExtractionOffset = 0;
+							pm.CurrentTask = HWNS::PacketManagerTask::ProcessPacketSize;
+							pm.Pop(); // Remove packet from queue after finished processing.
+						}
+						else
+						{
+							break;
 						}
 					}
 				}
