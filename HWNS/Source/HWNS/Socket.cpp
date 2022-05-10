@@ -122,7 +122,7 @@ namespace HWNS
 		return PResult::P_Success;
 	}
 
-	PResult Socket::Accept(Socket& outSocket)
+	PResult Socket::Accept(Socket& outSocket, IPEndpoint* endpoint)
 	{
 		sockaddr_in addr = {};
 		int len = sizeof(sockaddr_in);
@@ -133,9 +133,10 @@ namespace HWNS
 			return PResult::P_GenericError;
 		}
 
-		IPEndpoint newConnectionEndpoint((sockaddr*)&addr);
-		std::cout << "Net socket accepted!" << std::endl;
-		newConnectionEndpoint.Print();
+		if (endpoint != nullptr)
+		{
+			*endpoint = IPEndpoint((sockaddr*)&addr);
+		}
 
 		outSocket = Socket(IPVersion::IPv4, acceptedConnectionHandle);
 

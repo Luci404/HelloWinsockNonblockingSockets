@@ -5,6 +5,10 @@
 
 namespace HWNS
 {
+	IPEndpoint::IPEndpoint()
+	{
+
+	}
 
 	IPEndpoint::IPEndpoint(const char* ipAddress, uint16_t port)
 		: m_IPVersion(IPVersion::Unknown), m_Port(port)

@@ -24,7 +24,7 @@ namespace HWNS
 		PResult Bind(IPEndpoint endpoint);
 		PResult Listen(IPEndpoint endpoint, int backlog = 5);
 		PResult SetSocketOption(SocketOption option, bool enabled);
-		PResult Accept(Socket& outSocket);
+		PResult Accept(Socket& outSocket, IPEndpoint* endpoint);
 		PResult Connect(IPEndpoint endpoint);
 		PResult Send(const void* data, uint32_t numberOfBytes, int& bytesSent);
 		PResult Receive(void* destination, int numberOfBytes, int& bytesReceived);

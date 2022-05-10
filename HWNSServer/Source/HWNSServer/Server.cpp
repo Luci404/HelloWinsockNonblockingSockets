@@ -46,11 +46,13 @@ void Server::Frame()
 		if (listeningSocketFD.revents & POLLRDNORM)
 		{
 			// Try to accept connection
-			HWNS::Socket newConnection;
-			if (m_ListeningSocket.Accept(newConnection) == HWNS::PResult::P_Success)
+			HWNS::Socket newConnectionSocket;
+			HWNS::IPEndpoint newConnectionEndpoint;
+			if (m_ListeningSocket.Accept(newConnectionSocket, &newConnectionEndpoint) == HWNS::PResult::P_Success)
 			{
-				std::cout << "New connection accepted." << std::endl;
-				newConnection.Close();
+				HWNS::TCPConnection acceptedConnection(newConnectionSocket, newConnectionEndpoint);
+				std::cout << acceptedConnection.ToString() << " - New connection accepted." << std::endl;
+				acceptedConnection.Close();
 			}
 			else
 			{

@@ -11,6 +11,7 @@ namespace HWNS
 	class IPEndpoint
 	{
 	public:
+		IPEndpoint();
 		IPEndpoint(const char* ipAddress, uint16_t port);
 		IPEndpoint(sockaddr* addr);
 
