@@ -2,7 +2,7 @@
 
 #include "HWNS/Server.h"
 
-class MyServer : public Server
+class MyServer : public HWNS::Server
 {
 public:
 	virtual void OnConnect(HWNS::TCPConnection& newConnection) override;

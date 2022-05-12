@@ -105,42 +105,36 @@ namespace HWNS
 						return false;
 					}
 				}
-
 				if (bytesReceived > 0)
 				{
 					m_Connection.IncomingPacketManager.CurrentPacketExtractionOffset += bytesReceived;
-
 					if (m_Connection.IncomingPacketManager.CurrentTask == HWNS::PacketManagerTask::ProcessPacketSize)
 					{
 						if (m_Connection.IncomingPacketManager.CurrentPacketExtractionOffset == sizeof(uint16_t))
 						{
-							// Fully received the packet size.
 							m_Connection.IncomingPacketManager.CurrentPacketSize = ntohs(m_Connection.IncomingPacketManager.CurrentPacketSize);
 							if (m_Connection.IncomingPacketManager.CurrentPacketSize > HWNS::g_MaxPacketSize)
 							{
 								CloseConnection("Packet size too large.");
-								return false;
+								return false;;
 							}
-
-							// We are now ready to start processing the packet content.
-							m_Connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketContent;
 							m_Connection.IncomingPacketManager.CurrentPacketExtractionOffset = 0;
+							m_Connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketContent;
 						}
 					}
-					else // HWNS::PacketTask::ProcessPacketContent
+					else //Processing packet contents
 					{
-						if (m_Connection.IncomingPacketManager.CurrentPacketExtractionOffset == m_Connection.IncomingPacketManager.CurrentPacketSize) // Check if we have the full packet
+						if (m_Connection.IncomingPacketManager.CurrentPacketExtractionOffset == m_Connection.IncomingPacketManager.CurrentPacketSize)
 						{
 							std::shared_ptr<HWNS::Packet> packet = std::make_shared<HWNS::Packet>();
 							packet->Buffer.resize(m_Connection.IncomingPacketManager.CurrentPacketSize);
-							memcpy(&packet->Buffer[0], &m_Connection.Buffer[0], m_Connection.IncomingPacketManager.CurrentPacketSize);
+							memcpy(&packet->Buffer[0], m_Connection.Buffer, m_Connection.IncomingPacketManager.CurrentPacketSize);
 
 							m_Connection.IncomingPacketManager.Append(packet);
 
-							// Reset
 							m_Connection.IncomingPacketManager.CurrentPacketSize = 0;
-							m_Connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketSize;
 							m_Connection.IncomingPacketManager.CurrentPacketExtractionOffset = 0;
+							m_Connection.IncomingPacketManager.CurrentTask = HWNS::PacketManagerTask::ProcessPacketSize;
 						}
 					}
 				}
@@ -151,7 +145,7 @@ namespace HWNS
 				HWNS::PacketManager& pm = m_Connection.OutgoingPacketManager;
 				while (pm.HasPendingPackets())
 				{
-					if (pm.CurrentTask == HWNS::PacketManagerTask::ProcessPacketSize) // Sending packet size.
+					if (pm.CurrentTask == PacketManagerTask::ProcessPacketSize) //Sending packet size
 					{
 						pm.CurrentPacketSize = pm.Retrieve()->Buffer.size();
 						uint16_t bigEndianPacketSize = htons(pm.CurrentPacketSize);
@@ -161,35 +155,34 @@ namespace HWNS
 							pm.CurrentPacketExtractionOffset += bytesSent;
 						}
 
-						if (pm.CurrentPacketExtractionOffset == sizeof(uint16_t)) // If full packet size was sent.
+						if (pm.CurrentPacketExtractionOffset == sizeof(uint16_t)) //If full packet size was sent
 						{
 							pm.CurrentPacketExtractionOffset = 0;
-							pm.CurrentTask = HWNS::PacketManagerTask::ProcessPacketContent;
+							pm.CurrentTask = PacketManagerTask::ProcessPacketContent;
 						}
-						else // If full packet size was not sent, break out of loop for sending outgoing packets for this m_Connection.
+						else //If full packet size was not sent, break out of the loop for sending outgoing packets for this connection - we'll have to try again next time we are able to write normal data without blocking
 						{
-							// We don't want to send data unless we know that we can sent without blocking.
 							break;
 						}
 					}
-					else // Sending packet content
+					else //Sending packet contents
 					{
 						char* bufferPtr = (char*)&pm.Retrieve()->Buffer[0];
-						int bytesSent = send(m_UseFD.fd, (char*)(&bufferPtr) + pm.CurrentPacketExtractionOffset, pm.CurrentPacketSize - pm.CurrentPacketExtractionOffset, 0);
+						int bytesSent = send(m_UseFD.fd, (char*)(bufferPtr)+pm.CurrentPacketExtractionOffset, pm.CurrentPacketSize - pm.CurrentPacketExtractionOffset, 0);
 						if (bytesSent > 0)
 						{
 							pm.CurrentPacketExtractionOffset += bytesSent;
 						}
 
-						if (pm.CurrentPacketExtractionOffset == pm.CurrentPacketSize) // If full packet contents have been sent
+						if (pm.CurrentPacketExtractionOffset == pm.CurrentPacketSize) //If full packet contents have been sent
 						{
 							pm.CurrentPacketExtractionOffset = 0;
-							pm.CurrentTask = HWNS::PacketManagerTask::ProcessPacketSize;
-							pm.Pop(); // Remove packet from queue after finished processing.
+							pm.CurrentTask = PacketManagerTask::ProcessPacketSize;
+							pm.Pop(); //Remove packet from queue after finished processing
 						}
 						else
 						{
-							break;
+							break; //Added after tutorial was made 2019-06-24
 						}
 					}
 				}
