@@ -7,37 +7,33 @@ bool Server::Initialize(HWNS::IPEndpoint endpoint)
 	m_MasterFD.clear();
 	m_Connections.clear();
 
-	if (HWNS::Network::Initialize())
+	std::cout << "Successfully initialized network" << std::endl;
+
+	m_ListeningSocket = HWNS::Socket(endpoint.GetIPVersion());
+	if (m_ListeningSocket.Create() == HWNS::PResult::P_Success)
 	{
-		std::cout << "Successfully initialized network" << std::endl;
-
-		m_ListeningSocket = HWNS::Socket(endpoint.GetIPVersion());
-		if (m_ListeningSocket.Create() == HWNS::PResult::P_Success)
+		std::cout << "Successfully created socket." << std::endl;
+		if (m_ListeningSocket.Listen(endpoint) == HWNS::PResult::P_Success)
 		{
-			std::cout << "Successfully created socket." << std::endl;
-			if (m_ListeningSocket.Listen(endpoint) == HWNS::PResult::P_Success)
-			{
-				// Use docs...
-				WSAPOLLFD listeningSocketFD = {};
-				listeningSocketFD.fd = m_ListeningSocket.GetHandle();
-				listeningSocketFD.events = POLLRDNORM;
-				listeningSocketFD.revents = 0;
-				m_MasterFD.push_back(listeningSocketFD);
+			// Use docs...
+			WSAPOLLFD listeningSocketFD = {};
+			listeningSocketFD.fd = m_ListeningSocket.GetHandle();
+			listeningSocketFD.events = POLLRDNORM;
+			listeningSocketFD.revents = 0;
+			m_MasterFD.push_back(listeningSocketFD);
 
-				std::cout << "Socket successfully listening." << std::endl;
-				return true;
-			}
-			else
-			{
-				std::cout << "Failed to listen." << std::endl;
-			}
-			m_ListeningSocket.Close();
+			std::cout << "Socket successfully listening." << std::endl;
+			return true;
 		}
 		else
 		{
-			std::cout << "Failed to create socket." << std::endl;
+			std::cout << "Failed to listen." << std::endl;
 		}
-
+		m_ListeningSocket.Close();
+	}
+	else
+	{
+		std::cout << "Failed to create socket." << std::endl;
 	}
 
 	return false;
@@ -61,18 +57,13 @@ void Server::Frame()
 			{
 				m_Connections.emplace_back(HWNS::TCPConnection(newConnectionSocket, newConnectionEndpoint));
 				HWNS::TCPConnection& acceptedConnection = m_Connections[m_Connections.size() - 1];
-				std::cout << acceptedConnection.ToString() << " - New connection accepted." << std::endl;
+				OnConnect(acceptedConnection);
 
 				WSAPOLLFD newConnectionFD = {};
 				newConnectionFD.fd = newConnectionSocket.GetHandle();
 				newConnectionFD.events = POLLRDNORM | POLLWRNORM;
 				newConnectionFD.revents = 0;
 				m_MasterFD.push_back(newConnectionFD);
-
-				// Send welcome message
-				std::shared_ptr<HWNS::Packet> welcomeMessagePacket = std::make_shared<HWNS::Packet>(HWNS::PacketType::PT_ChatMessage);
-				*welcomeMessagePacket << std::string("Welcome from server!");
-				acceptedConnection.OutgoingPacketManager.Append(welcomeMessagePacket);
 			}
 			else
 			{
@@ -108,7 +99,7 @@ void Server::Frame()
 			{
 				// TMP
 				int bytesReceived = 0;
-				
+
 				if (connection.IncomingPacketManager.CurrentTask == HWNS::PacketManagerTask::ProcessPacketSize)
 				{
 					// ExtractionOffset handles edge case with partial reads.
@@ -118,7 +109,7 @@ void Server::Frame()
 				{
 					bytesReceived = recv(m_UseFD[i].fd, (char*)&connection.Buffer + connection.IncomingPacketManager.CurrentPacketExtractionOffset, connection.IncomingPacketManager.CurrentPacketSize - connection.IncomingPacketManager.CurrentPacketExtractionOffset, 0);
 				}
-				
+
 				if (bytesReceived == 0) // Connection lost
 				{
 					CloseConnection(connectionIndex, "Recv=0");
@@ -139,7 +130,7 @@ void Server::Frame()
 				{
 					connection.IncomingPacketManager.CurrentPacketExtractionOffset += bytesReceived;
 
-					if (connection.IncomingPacketManager.CurrentTask== HWNS::PacketManagerTask::ProcessPacketSize)
+					if (connection.IncomingPacketManager.CurrentTask == HWNS::PacketManagerTask::ProcessPacketSize)
 					{
 						if (connection.IncomingPacketManager.CurrentPacketExtractionOffset == sizeof(uint16_t))
 						{
@@ -163,7 +154,7 @@ void Server::Frame()
 							std::shared_ptr<HWNS::Packet> packet = std::make_shared<HWNS::Packet>();
 							packet->Buffer.resize(connection.IncomingPacketManager.CurrentPacketSize);
 							memcpy(&packet->Buffer[0], &connection.Buffer[0], connection.IncomingPacketManager.CurrentPacketSize);
-							
+
 							connection.IncomingPacketManager.Append(packet);
 
 							// Reset
@@ -174,7 +165,7 @@ void Server::Frame()
 					}
 				}
 			}
-		
+
 			if (m_UseFD[i].revents & POLLWRNORM)
 			{
 				HWNS::PacketManager& pm = connection.OutgoingPacketManager;
@@ -241,10 +232,20 @@ void Server::Frame()
 	}
 }
 
+void Server::OnConnect(HWNS::TCPConnection& newConnection)
+{
+	std::cout << newConnection.ToString() << " - New connection accepted." << std::endl;
+}
+
+void Server::OnDisconnect(HWNS::TCPConnection& lostConnection, std::string reason)
+{
+	std::cout << "[" << reason << "]" << " Connection lost: " << lostConnection.ToString() << "." << std::endl;
+}
+
 void Server::CloseConnection(int connectionIndex, std::string reason)
 {
 	HWNS::TCPConnection& connection = m_Connections[connectionIndex];
-	std::cout << "[" << reason << "] Connection lost : " << connection.ToString() << "." << std::endl;
+	OnDisconnect(connection, reason);
 	m_MasterFD.erase(m_MasterFD.begin() + (connectionIndex + 1));
 	m_UseFD.erase(m_UseFD.begin() + (connectionIndex + 1));
 	connection.Close();
@@ -253,34 +254,6 @@ void Server::CloseConnection(int connectionIndex, std::string reason)
 
 bool Server::ProcessPacket(std::shared_ptr<HWNS::Packet> packet)
 {
-	switch (packet->GetPacketType())
-	{
-	case HWNS::PacketType::PT_ChatMessage:
-	{
-		std::string message;
-		*packet >> message;
-		std::cout << "Chat Message: " << message << std::endl;
-		break;
-	}
-	case HWNS::PacketType::PT_IntegerArray:
-	{
-		uint32_t arraySize = 0;
-		*packet >> arraySize;
-		std::cout << "Array Size: " << arraySize << std::endl;
-		for (uint32_t i = 0; i < arraySize; i++)
-		{
-			uint32_t element = 0;
-			*packet >> element;
-			std::cout << "Element[" << i << "] - " << element << std::endl;
-		}
-		break;
-	}
-	default:
-	{
-		std::cout << "Unrecognized packet type: " << packet->GetPacketType() << std::endl;
-		break;
-	}
-	}
-
+	std::cout << "Packet received with size: " << packet->Buffer.size() << std::endl;
 	return true;
 }

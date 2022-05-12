@@ -7,6 +7,7 @@ namespace HWNS
 	class TCPConnection
 	{
 	public:
+		TCPConnection() : ConnectionSocket(Socket()) {};
 		TCPConnection(Socket socket, IPEndpoint endpoint);
 		void Close();
 		std::string ToString();
@@ -15,9 +16,9 @@ namespace HWNS
 		PacketManager IncomingPacketManager;
 		PacketManager OutgoingPacketManager;
 		char Buffer[g_MaxPacketSize];
+		Socket ConnectionSocket;
 
 	private:
-		Socket m_Socket;
 		IPEndpoint m_Endpoint;
 		std::string m_StringRepresentation;
 	};

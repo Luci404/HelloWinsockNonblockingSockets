@@ -1,4 +1,4 @@
-#include "Client.h"
+#include "MyClient.h"
 
 #include "HWNS/HWNS.h"
 
@@ -6,12 +6,15 @@
 
 int main()
 {
-	Client client;
-	if (client.Connect(HWNS::IPEndpoint("127.0.0.1", 4791)))
+	if (HWNS::Network::Initialize())
 	{
-		while (client.IsConnected())
+		MyClient client;
+		if (client.Connect(HWNS::IPEndpoint("127.0.0.1", 4791)))
 		{
-			client.Frame();
+			while (client.IsConnected())
+			{
+				client.Frame();
+			}
 		}
 	}
 
