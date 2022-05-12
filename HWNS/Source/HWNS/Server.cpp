@@ -47,7 +47,6 @@ namespace HWNS
 		{
 			if (m_Connections[i].OutgoingPacketManager.HasPendingPackets())
 			{
-				std::cout << "Hit A" << std::endl;
 				m_MasterFD[i + 1].events = POLLRDNORM | POLLWRNORM;
 			}
 		}
