@@ -9,7 +9,7 @@ namespace HWNS
 
 	bool PacketManager::HasPendingPackets()
 	{
-		return !m_Packets.empty(); //returns true if packets are pending
+		return (!m_Packets.empty()); //returns true if packets are pending
 	}
 
 	void PacketManager::Append(std::shared_ptr<Packet> packet)

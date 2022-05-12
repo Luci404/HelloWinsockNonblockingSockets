@@ -12,7 +12,7 @@ void MyServer::OnConnect(HWNS::TCPConnection& newConnection)
 	newConnection.OutgoingPacketManager.Append(welcomeMessagePacket);
 
 	std::shared_ptr<HWNS::Packet> connectionLostPacket = std::make_shared<HWNS::Packet>(HWNS::PacketType::PT_ChatMessage);
-	*connectionLostPacket << std::string("A user disconnected!");
+	*connectionLostPacket << std::string("A user has connected!");
 	for (auto& connection : m_Connections)
 	{
 		if (&connection == &newConnection)
@@ -29,7 +29,7 @@ void MyServer::OnDisconnect(HWNS::TCPConnection& lostConnection, std::string rea
 	std::cout << "[" << reason << "]" << " Connection lost: " << lostConnection.ToString() << "." << std::endl;
 
 	std::shared_ptr<HWNS::Packet> connectionLostPacket = std::make_shared<HWNS::Packet>(HWNS::PacketType::PT_ChatMessage);
-	*connectionLostPacket << std::string("A user disconnected!");
+	*connectionLostPacket << std::string("A user has disconnected!");
 	for (auto& connection : m_Connections)
 	{
 		if (&connection == &lostConnection)

@@ -25,7 +25,7 @@ namespace HWNS
 				{
 					m_Connection = TCPConnection(socket, endpoint);
 					m_MasterFD.fd = m_Connection.ConnectionSocket.GetHandle();
-					m_MasterFD.events = POLLRDNORM | POLLWRNORM;
+					m_MasterFD.events = POLLRDNORM;
 					m_MasterFD.revents = 0;
 					m_IsConnected = true;
 					OnConnect();
@@ -52,6 +52,12 @@ namespace HWNS
 
 	bool Client::Frame()
 	{
+
+		if (m_Connection.OutgoingPacketManager.HasPendingPackets())
+		{
+			m_MasterFD.events = POLLRDNORM | POLLWRNORM;
+		}
+
 		m_UseFD = m_MasterFD;
 
 		// TODO: Consider using 0 for timeout
@@ -185,6 +191,11 @@ namespace HWNS
 							break; //Added after tutorial was made 2019-06-24
 						}
 					}
+				}
+
+				if (!m_Connection.OutgoingPacketManager.HasPendingPackets())
+				{
+					m_MasterFD.events = POLLRDNORM;
 				}
 			}
 		}

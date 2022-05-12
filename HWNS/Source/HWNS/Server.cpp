@@ -43,6 +43,15 @@ namespace HWNS
 
 	void Server::Frame()
 	{
+		for (int i = 0; i < m_Connections.size(); i++)
+		{
+			if (m_Connections[i].OutgoingPacketManager.HasPendingPackets())
+			{
+				std::cout << "Hit A" << std::endl;
+				m_MasterFD[i + 1].events = POLLRDNORM | POLLWRNORM;
+			}
+		}
+
 		m_UseFD = m_MasterFD;
 
 		// TODO: Consider using 0 for timeout
@@ -59,13 +68,12 @@ namespace HWNS
 				{
 					m_Connections.emplace_back(HWNS::TCPConnection(newConnectionSocket, newConnectionEndpoint));
 					HWNS::TCPConnection& acceptedConnection = m_Connections[m_Connections.size() - 1];
-					OnConnect(acceptedConnection);
-
 					WSAPOLLFD newConnectionFD = {};
 					newConnectionFD.fd = newConnectionSocket.GetHandle();
-					newConnectionFD.events = POLLRDNORM | POLLWRNORM;
+					newConnectionFD.events = POLLRDNORM;
 					newConnectionFD.revents = 0;
 					m_MasterFD.push_back(newConnectionFD);
+					OnConnect(acceptedConnection);
 				}
 				else
 				{
@@ -208,7 +216,11 @@ namespace HWNS
 								break; //Added after tutorial was made 2019-06-24
 							}
 						}
+					}
 
+					if (!pm.HasPendingPackets())
+					{
+						m_MasterFD[i].events = POLLRDNORM;
 					}
 				}
 			}
